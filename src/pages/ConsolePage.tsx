@@ -280,14 +280,12 @@ export function ConsolePage() {
       type: file.type,
       lastModified: file.lastModified,
     };
-    setUploadedFiles((prevFiles) => [...prevFiles, newFile]);
 
-    // TODO: Process file for RAG (convert to embeddings and store)
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      const response = await fetch(`${LOCAL_RELAY_SERVER_URL}/upload`, {
+      const response = await fetch(`${LOCAL_RELAY_SERVER_URL}/files/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -295,6 +293,8 @@ export function ConsolePage() {
       if (!response.ok) {
         throw new Error('Upload failed');
       }
+
+      setUploadedFiles((prevFiles) => [...prevFiles, newFile]);
 
       // Update conversation context with new file information
       const client = clientRef.current;
@@ -308,13 +308,15 @@ export function ConsolePage() {
       }
     } catch (error) {
       console.error('Error uploading file:', error);
-      setUploadedFiles((prevFiles) => prevFiles.filter((f) => f.id !== newFile.id));
     }
   }, []);
 
   const handleFileDelete = useCallback(async (fileId: string) => {
+    const fileToDelete = uploadedFiles.find((file) => file.id === fileId);
+    if (!fileToDelete) return;
+
     try {
-      const response = await fetch(`${LOCAL_RELAY_SERVER_URL}/files/${fileId}`, {
+      const response = await fetch(`${LOCAL_RELAY_SERVER_URL}/files/${fileToDelete.name}`, {
         method: 'DELETE',
       });
 
@@ -326,24 +328,13 @@ export function ConsolePage() {
 
       // Update conversation context
       const client = clientRef.current;
-      const deletedFile = uploadedFiles.find((file) => file.id === fileId);
-      if (client && deletedFile) {
+      if (client) {
         client.sendUserMessageContent([
           {
             type: 'input_text',
-            text: `The document "${deletedFile.name}" has been removed from the knowledge base.`,
+            text: `The document "${fileToDelete.name}" has been removed from the knowledge base.`,
           },
         ]);
-      }
-    } catch (error) {
-      console.error('Error deleting file:', error);
-    }
-  }, [uploadedFiles]);
-    } catch (error) {
-      console.error('Error deleting file:', error);
-    }
-  }, [uploadedFiles]);
-        });
       }
     } catch (error) {
       console.error('Error deleting file:', error);
