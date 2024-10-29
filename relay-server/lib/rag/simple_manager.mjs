@@ -24,16 +24,28 @@ export class SimpleRAGManager {
   }
 
   async processDocument(file) {
-    console.log('Starting document processing...');
-    if (file.mimetype !== 'text/plain') {
-      console.warn('Only text files are currently supported');
-      return;
+    console.log('Starting document processing...', {
+      filename: file.filename,
+      mimetype: file.mimetype,
+      size: file.buffer.length
+    });
+
+    if (!file.buffer) {
+      const error = new Error('File buffer is missing');
+      console.error('Document processing error:', error);
+      throw error;
     }
 
-    const text = file.buffer.toString('utf-8');
-    console.log(`Text extracted, length: ${text.length} characters`);
+    if (file.mimetype !== 'text/plain') {
+      const error = new Error('Only text files are currently supported');
+      console.error('Document processing error:', error);
+      throw error;
+    }
 
     try {
+      const text = file.buffer.toString('utf-8');
+      console.log(`Text extracted, length: ${text.length} characters`);
+
       console.log('Generating embedding...');
       const embedding = await this.embeddings.embedQuery(text);
       console.log('Successfully generated embedding, length:', embedding.length);
@@ -49,8 +61,12 @@ export class SimpleRAGManager {
 
       return true;
     } catch (error) {
-      console.error('Error during embedding generation:', error.message);
-      throw error;
+      console.error('Error during document processing:', {
+        error: error.message,
+        stack: error.stack,
+        filename: file.filename
+      });
+      throw new Error(`Failed to process document: ${error.message}`);
     }
   }
 
