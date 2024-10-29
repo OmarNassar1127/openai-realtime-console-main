@@ -13,23 +13,6 @@ export class SimpleRAGManager {
     this.documents = new Map(); // Store documents in memory
     this.uploadsDir = './uploads';
     this.ensureUploadsDirectory();
-    // Load test document
-    this.loadTestDocument();
-  }
-
-  async loadTestDocument() {
-    try {
-      const testFile = {
-        filename: 'test_document.txt',
-        mimetype: 'text/plain',
-        path: './test_document.txt',
-        buffer: await fs.readFile('./test_document.txt')
-      };
-      await this.processDocument(testFile);
-      console.log('Test document loaded successfully');
-    } catch (error) {
-      console.error('Error loading test document:', error);
-    }
   }
 
   async ensureUploadsDirectory() {
