@@ -1,11 +1,12 @@
-import { PineconeClient } from '@pinecone-database/pinecone';
-import { OpenAIEmbeddings } from '@langchain/openai';
-import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
-import { TextLoader } from '@langchain/community/document_loaders/fs/text';
-import { RecursiveCharacterTextSplitter } from '@langchain/core/text_splitter';
-import { PineconeStore } from '@langchain/pinecone';
+const { PineconeClient } = require('@pinecone-database/pinecone');
+const { OpenAIEmbeddings } = require('@langchain/openai');
+const { PDFLoader } = require('@langchain/community/src/document_loaders/fs/pdf');
+const { TextLoader } = require('@langchain/community/src/document_loaders/fs/text');
+const { RecursiveCharacterTextSplitter } = require('@langchain/core/text_splitter');
+const { PineconeStore } = require('@langchain/pinecone');
+const fs = require('fs').promises;
 
-export class RAGManager {
+class RAGManager {
   constructor(openAIApiKey) {
     this.openAIApiKey = openAIApiKey;
     this.pinecone = new PineconeClient();
@@ -100,3 +101,5 @@ export class RAGManager {
     }
   }
 }
+
+module.exports = RAGManager;
