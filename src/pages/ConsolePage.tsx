@@ -285,7 +285,7 @@ export function ConsolePage() {
     formData.append('file', file);
 
     try {
-      const response = await fetch(`${LOCAL_RELAY_SERVER_URL}/files/upload`, {
+      const response = await fetch(`${LOCAL_RELAY_SERVER_URL}/api/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -316,7 +316,7 @@ export function ConsolePage() {
     if (!fileToDelete) return;
 
     try {
-      const response = await fetch(`${LOCAL_RELAY_SERVER_URL}/files/${fileToDelete.name}`, {
+      const response = await fetch(`${LOCAL_RELAY_SERVER_URL}/api/files/${fileToDelete.name}`, {
         method: 'DELETE',
       });
 
