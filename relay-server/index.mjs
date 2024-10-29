@@ -41,23 +41,8 @@ const upload = multer({
   },
 });
 
-// Initialize RAG manager and process test document
+// Initialize RAG manager
 const ragManager = new SimpleRAGManager(OPENAI_API_KEY);
-
-// Process test document
-const testDocPath = './test_document.txt';
-try {
-  const testDocContent = await fs.readFile(testDocPath);
-  await ragManager.processDocument({
-    buffer: testDocContent,
-    filename: 'test_document.txt',
-    mimetype: 'text/plain',
-    path: testDocPath
-  });
-  console.log('Test document processed successfully');
-} catch (error) {
-  console.error('Error processing test document:', error);
-}
 
 // File upload endpoint
 app.post('/api/upload', upload.single('file'), async (req, res) => {
