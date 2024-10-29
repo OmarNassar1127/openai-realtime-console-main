@@ -1,0 +1,77 @@
+[data-component='FileManagement'] {
+  .files {
+    margin-bottom: 1rem;
+  }
+
+  .dropzone {
+    border: 2px dashed #ccc;
+    border-radius: 4px;
+    padding: 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+    margin-bottom: 1rem;
+
+    &:hover {
+      border-color: #0099ff;
+    }
+
+    &.dragging {
+      border-color: #0099ff;
+      background-color: rgba(0, 153, 255, 0.05);
+    }
+
+    p {
+      margin: 0 0 0.5rem;
+      color: #666;
+    }
+
+    small {
+      color: #999;
+    }
+  }
+
+  .files-list {
+    .file-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem;
+      border-bottom: 1px solid #eee;
+      transition: background-color 0.2s ease;
+
+      &:hover {
+        background-color: rgba(0, 0, 0, 0.02);
+      }
+
+      .file-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+
+        .file-name {
+          font-size: 0.9rem;
+          color: #333;
+        }
+
+        .file-size {
+          font-size: 0.8rem;
+          color: #666;
+        }
+      }
+
+      .delete-button {
+        background: none;
+        border: none;
+        padding: 0.5rem;
+        cursor: pointer;
+        color: #666;
+        transition: color 0.2s ease;
+
+        &:hover {
+          color: #ff0000;
+        }
+      }
+    }
+  }
+}

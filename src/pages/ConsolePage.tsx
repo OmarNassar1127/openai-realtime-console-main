@@ -18,14 +18,15 @@ import { ItemType } from '@openai/realtime-api-beta/dist/lib/client.js';
 import { WavRecorder, WavStreamPlayer } from '../lib/wavtools/index.js';
 import { instructions } from '../utils/conversation_config.js';
 import { WavRenderer } from '../utils/wav_renderer';
+import { FileItem } from '../types/FileItem';
 
 import { X, Edit, Zap, ArrowUp, ArrowDown } from 'react-feather';
 import { Button } from '../components/button/Button';
 import { Toggle } from '../components/toggle/Toggle';
 import { Map } from '../components/Map';
+import { FileManagement } from '../components/FileManagement/FileManagement';
 
 import './ConsolePage.scss';
-import { isJsxOpeningLikeElement } from 'typescript';
 
 /**
  * Type for result from get_weather() function call
@@ -119,6 +120,7 @@ export function ConsolePage() {
   const [canPushToTalk, setCanPushToTalk] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
   const [memoryKv, setMemoryKv] = useState<{ [key: string]: any }>({});
+  const [uploadedFiles, setUploadedFiles] = useState<FileItem[]>([]);
   const [coords, setCoords] = useState<Coordinates | null>({
     lat: 37.775593,
     lng: -122.418137,
@@ -202,6 +204,7 @@ export function ConsolePage() {
     setRealtimeEvents([]);
     setItems([]);
     setMemoryKv({});
+    setUploadedFiles([]); // Reset uploaded files state
     setCoords({
       lat: 37.775593,
       lng: -122.418137,
@@ -268,6 +271,84 @@ export function ConsolePage() {
     }
     setCanPushToTalk(value === 'none');
   };
+
+  const handleFileUpload = useCallback(async (file: File) => {
+    const newFile: FileItem = {
+      id: crypto.randomUUID(),
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: file.lastModified,
+    };
+    setUploadedFiles((prevFiles) => [...prevFiles, newFile]);
+
+    // TODO: Process file for RAG (convert to embeddings and store)
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(`${LOCAL_RELAY_SERVER_URL}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      // Update conversation context with new file information
+      const client = clientRef.current;
+      if (client) {
+        client.sendUserMessageContent([
+          {
+            type: 'input_text',
+            text: `The user has uploaded a document: ${file.name}. You can now reference information from this document in your responses.`,
+          },
+        ]);
+      }
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      setUploadedFiles((prevFiles) => prevFiles.filter((f) => f.id !== newFile.id));
+    }
+  }, []);
+
+  const handleFileDelete = useCallback(async (fileId: string) => {
+    try {
+      const response = await fetch(`${LOCAL_RELAY_SERVER_URL}/files/${fileId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Delete failed');
+      }
+
+      setUploadedFiles((prevFiles) => prevFiles.filter((file) => file.id !== fileId));
+
+      // Update conversation context
+      const client = clientRef.current;
+      const deletedFile = uploadedFiles.find((file) => file.id === fileId);
+      if (client && deletedFile) {
+        client.sendUserMessageContent([
+          {
+            type: 'input_text',
+            text: `The document "${deletedFile.name}" has been removed from the knowledge base.`,
+          },
+        ]);
+      }
+    } catch (error) {
+      console.error('Error deleting file:', error);
+    }
+  }, [uploadedFiles]);
+    } catch (error) {
+      console.error('Error deleting file:', error);
+    }
+  }, [uploadedFiles]);
+        });
+      }
+    } catch (error) {
+      console.error('Error deleting file:', error);
+    }
+  }, [uploadedFiles]);
 
   /**
    * Auto-scroll the event logs
@@ -692,6 +773,13 @@ export function ConsolePage() {
           </div>
         </div>
         <div className="content-right">
+          <div data-component="file-management">
+            <FileManagement
+              files={uploadedFiles}
+              onFileUpload={handleFileUpload}
+              onFileDelete={handleFileDelete}
+            />
+          </div>
           <div className="content-block map">
             <div className="content-block-title">get_weather()</div>
             <div className="content-block-title bottom">

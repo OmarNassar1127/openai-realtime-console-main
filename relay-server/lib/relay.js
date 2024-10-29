@@ -1,16 +1,28 @@
 import { WebSocketServer } from 'ws';
 import { RealtimeClient } from '@openai/realtime-api-beta';
+import { RAGManager } from './rag/manager.js';
 
 export class RealtimeRelay {
-  constructor(apiKey) {
+  constructor(apiKey, app) {
     this.apiKey = apiKey;
+    this.app = app;
     this.sockets = new WeakMap();
     this.wss = null;
+    this.ragManager = new RAGManager(apiKey);
+  }
+
+  async initialize() {
+    await this.ragManager.initialize();
   }
 
   listen(port) {
-    this.wss = new WebSocketServer({ port });
+    if (this.app) {
+      this.wss = new WebSocketServer({ server: this.app.listen(port) });
+    } else {
+      this.wss = new WebSocketServer({ port });
+    }
     this.wss.on('connection', this.connectionHandler.bind(this));
+    this.initialize().catch(console.error);
     this.log(`Listening on ws://localhost:${port}`);
   }
 
@@ -44,10 +56,23 @@ export class RealtimeRelay {
     // Relay: Browser Event -> OpenAI Realtime API Event
     // We need to queue data waiting for the OpenAI connection
     const messageQueue = [];
-    const messageHandler = (data) => {
+    const messageHandler = async (data) => {
       try {
         const event = JSON.parse(data);
         this.log(`Relaying "${event.type}" to OpenAI`);
+
+        // If this is a text input, enhance it with RAG context
+        if (event.type === 'input_text' && event.text) {
+          const context = await this.ragManager.queryContext(event.text);
+          if (context && context.length > 0) {
+            const contextText = context.map(doc =>
+              `[From ${doc.source}]: ${doc.text}`
+            ).join('\n\n');
+
+            event.text = `Context:\n${contextText}\n\nUser Query: ${event.text}\n\nPlease use the context provided above to help answer the query. Include citations when using information from the context.`;
+          }
+        }
+
         client.realtime.send(event.type, event);
       } catch (e) {
         console.error(e.message);
@@ -74,7 +99,7 @@ export class RealtimeRelay {
     }
     this.log(`Connected to OpenAI successfully!`);
     while (messageQueue.length) {
-      messageHandler(messageQueue.shift());
+      await messageHandler(messageQueue.shift());
     }
   }
 
