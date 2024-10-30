@@ -9,6 +9,7 @@ class RealtimeRelay {
     this.sockets = new WeakMap();
     this.wss = null;
     this.ragManager = new SimpleRAGManager(apiKey);
+    this.responseTimeoutMs = 30000; // 30 second timeout for responses
   }
 
   // No initialization needed for SimpleRAGManager
@@ -48,18 +49,66 @@ class RealtimeRelay {
       headers: { 'OpenAI-Beta': 'realtime=v1' }
     });
 
+    let hasReceivedResponse = false;
+    let responseTimeout = null;
+
+    // Connect to OpenAI Realtime API
+    try {
+      await client.connect();
+      this.log('Connected to OpenAI Realtime API');
+    } catch (error) {
+      this.log(`Failed to connect to OpenAI: ${error.message}`);
+      ws.send(JSON.stringify({
+        type: 'error',
+        error: { message: 'Failed to connect to OpenAI', code: 'connection_failed' }
+      }));
+      ws.close();
+      return;
+    }
+
     // Relay: OpenAI Realtime API Event -> Browser Event
-    client.realtime.on('server.*', (event) => {
+    client.on('message', (event) => {
       this.log(`Received from OpenAI: ${event.type}`);
       console.log('OpenAI event:', JSON.stringify(event, null, 2));
+
+      // Track if we've received an actual response
+      if (event.type === 'conversation.item.created' &&
+          event.item?.role === 'assistant') {
+        hasReceivedResponse = true;
+        if (responseTimeout) {
+          clearTimeout(responseTimeout);
+          responseTimeout = null;
+        }
+      }
+
       ws.send(JSON.stringify(event));
     });
-    client.realtime.on('error', (error) => {
+
+    client.on('error', (error) => {
       console.error('OpenAI error:', error);
       this.log(`OpenAI error: ${error.message}`);
+
+      // Check for specific error types
+      if (error.message?.includes('authentication')) {
+        this.log('Authentication error - check API key permissions');
+      } else if (error.message?.includes('permission')) {
+        this.log('Permission denied - verify API key has access to required features');
+      }
+
+      ws.send(JSON.stringify({
+        type: 'error',
+        error: {
+          message: error.message,
+          code: error.code || 'unknown'
+        }
+      }));
     });
-    client.realtime.on('close', () => {
+
+    client.on('close', () => {
       this.log('OpenAI connection closed');
+      if (responseTimeout) {
+        clearTimeout(responseTimeout);
+      }
       ws.close();
     });
 
@@ -70,6 +119,12 @@ class RealtimeRelay {
       try {
         const event = JSON.parse(data);
         console.log(`Received event from client:`, JSON.stringify(event, null, 2));
+
+        // Reset response tracking for new messages
+        hasReceivedResponse = false;
+        if (responseTimeout) {
+          clearTimeout(responseTimeout);
+        }
 
         // If this is a text input, convert it to conversation.item.create
         if (event.type === 'input_text' && event.text) {
@@ -83,63 +138,65 @@ class RealtimeRelay {
 
             console.log(`Sending system message with context`);
             // Send system message with context first
-            const systemEvent = {
-              type: 'conversation.item.create',
-              item: {
-                type: 'message',
-                role: 'system',
-                content: [{
-                  type: 'input_text',
-                  text: `You are a helpful AI assistant. Use this context to inform your responses, and cite sources when appropriate:\n\n${contextText}`
-                }]
-              }
+            const systemMessage = {
+              type: 'text',
+              text: `You are a helpful AI assistant with access to specific knowledge. When responding:
+1. Always reference the provided context in your answers
+2. Use direct quotes when citing specific information
+3. Indicate clearly which parts of the context you're drawing from
+4. If the context doesn't contain relevant information, say so
+
+Here is your reference context:\n\n${contextText}`
             };
-            console.log(`System event:`, JSON.stringify(systemEvent, null, 2));
-            await new Promise((resolve) => {
-              client.realtime.send(systemEvent.type, systemEvent);
-              setTimeout(resolve, 1000); // Wait for system message to be processed
-            });
+
+            client.sendSystemMessage([systemMessage]);
+            await new Promise(resolve => setTimeout(resolve, 1000));
 
             // Then send the user's query
-            const userEvent = {
-              type: 'conversation.item.create',
-              item: {
-                type: 'message',
-                role: 'user',
-                content: [{
-                  type: 'input_text',
-                  text: event.text
-                }]
-              }
-            };
-            console.log(`Sending user event:`, JSON.stringify(userEvent, null, 2));
-            client.realtime.send(userEvent.type, userEvent);
+            client.sendUserMessage([{
+              type: 'text',
+              text: event.text
+            }]);
           } else {
             // If no context, just send the user message
-            const userEvent = {
-              type: 'conversation.item.create',
-              item: {
-                type: 'message',
-                role: 'user',
-                content: [{
-                  type: 'input_text',
-                  text: event.text
-                }]
-              }
-            };
-            console.log(`Sending user event:`, JSON.stringify(userEvent, null, 2));
-            client.realtime.send(userEvent.type, userEvent);
+            client.sendUserMessage([{
+              type: 'text',
+              text: event.text
+            }]);
           }
+
+          // Set timeout for response
+          responseTimeout = setTimeout(() => {
+            if (!hasReceivedResponse) {
+              this.log('No response received from OpenAI within timeout period');
+              ws.send(JSON.stringify({
+                type: 'error',
+                error: {
+                  message: 'No response received from OpenAI within timeout period',
+                  code: 'timeout'
+                }
+              }));
+            }
+          }, this.responseTimeoutMs);
+
         } else {
           // For non-text events, send directly to OpenAI
           console.log(`Sending event to OpenAI:`, JSON.stringify(event, null, 2));
-          client.realtime.send(event.type, event);
+          client.send(event.type, event);
         }
       } catch (e) {
         console.error(`Error processing message:`, e);
         this.log(`Error parsing event from client: ${data}`);
+        ws.send(JSON.stringify({
+          type: 'error',
+          error: {
+            message: `Error processing message: ${e.message}`,
+            code: 'processing_error'
+          }
+        }));
       }
     };
+
     ws.on('message', (data) => {
       if (!client.isConnected()) {
         messageQueue.push(data);
@@ -147,7 +204,13 @@ class RealtimeRelay {
         messageHandler(data);
       }
     });
-    ws.on('close', () => client.disconnect());
+
+    ws.on('close', () => {
+      if (responseTimeout) {
+        clearTimeout(responseTimeout);
+      }
+      client.disconnect();
+    });
 
     // Connect to OpenAI Realtime API
     try {
@@ -155,6 +218,13 @@ class RealtimeRelay {
       await client.connect();
     } catch (e) {
       this.log(`Error connecting to OpenAI: ${e.message}`);
+      ws.send(JSON.stringify({
+        type: 'error',
+        error: {
+          message: `Failed to connect to OpenAI: ${e.message}`,
+          code: 'connection_error'
+        }
+      }));
       ws.close();
       return;
     }

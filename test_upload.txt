@@ -1,0 +1,4 @@
+This is a test file for uploading.
+It contains some simple text to verify the upload functionality.
+The sky is blue and the grass is green.
+Testing the RAG system's ability to process and retrieve this information.

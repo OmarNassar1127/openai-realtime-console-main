@@ -1,6 +1,8 @@
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+import { Buffer } from 'buffer';
 
 export class SimpleRAGManager {
   constructor(openAIApiKey) {
@@ -12,6 +14,8 @@ export class SimpleRAGManager {
     });
     this.documents = new Map(); // Store documents in memory
     this.uploadsDir = './uploads';
+
+    // No need for PDF.js initialization anymore
     this.ensureUploadsDirectory();
   }
 
@@ -36,15 +40,31 @@ export class SimpleRAGManager {
       throw error;
     }
 
-    if (file.mimetype !== 'text/plain') {
-      const error = new Error('Only text files are currently supported');
-      console.error('Document processing error:', error);
-      throw error;
-    }
-
+    let text;
     try {
-      const text = file.buffer.toString('utf-8');
-      console.log(`Text extracted, length: ${text.length} characters`);
+      switch (file.mimetype) {
+        case 'text/plain':
+          text = file.buffer.toString('utf-8');
+          console.log(`Text file extracted, length: ${text.length} characters`);
+          break;
+        case 'application/pdf':
+          try {
+            // Basic PDF text extraction - look for text-like content
+            const content = file.buffer.toString('utf-8');
+            // Extract text-like content between PDF markers
+            const textContent = content.replace(/[\x00-\x1F\x7F-\xFF]/g, ' ')
+                                     .replace(/\s+/g, ' ')
+                                     .trim();
+            text = textContent || 'No readable text content found in PDF';
+            console.log(`PDF text extracted, length: ${text.length} characters`);
+          } catch (pdfError) {
+            console.error('Error processing PDF:', pdfError);
+            throw new Error(`Failed to process PDF: ${pdfError.message}`);
+          }
+          break;
+        default:
+          throw new Error('Unsupported file type. Only TXT and PDF files are allowed.');
+      }
 
       console.log('Generating embedding...');
       const embedding = await this.embeddings.embedQuery(text);
@@ -55,36 +75,45 @@ export class SimpleRAGManager {
         embedding,
       });
 
-      // Save file to disk for persistence
-      await fs.writeFile(file.path, file.buffer);
-      console.log(`File saved to disk: ${file.path}`);
+      console.log(`Document processed and stored in memory: ${file.filename}`);
 
       return true;
     } catch (error) {
       console.error('Error during document processing:', {
         error: error.message,
         stack: error.stack,
-        filename: file.filename
+        filename: file.filename,
+        mimetype: file.mimetype
       });
       throw new Error(`Failed to process document: ${error.message}`);
     }
   }
 
-  async queryContext(query, topK = 1) {
+  async queryContext(query, topK = 1, similarityThreshold = 0.1) {
     try {
       console.log('Generating embedding for query:', query);
       const queryEmbedding = await this.embeddings.embedQuery(query);
       console.log('Successfully generated query embedding');
 
       const results = [];
+      const totalDocuments = this.documents.size;
+      console.log(`Searching through ${totalDocuments} documents for relevant context...`);
+
       for (const [filename, doc] of this.documents.entries()) {
         const similarity = this.cosineSimilarity(queryEmbedding, doc.embedding);
-        results.push({ filename, text: doc.text, score: similarity });
+        console.log(`Similarity score for ${filename}: ${similarity.toFixed(4)}`);
+        if (similarity >= similarityThreshold) {
+          results.push({ filename, text: doc.text, score: similarity });
+          console.log(`Added context from ${filename} (score: ${similarity.toFixed(4)}):`);
+          console.log('Context preview:', doc.text.substring(0, 150) + '...');
+        }
       }
 
-      return results
+      const sortedResults = results
         .sort((a, b) => b.score - a.score)
         .slice(0, topK);
+      console.log(`Found ${sortedResults.length} relevant context items above threshold ${similarityThreshold}`);
+      return sortedResults;
     } catch (error) {
       console.error('Error querying context:', error);
       return [];
@@ -94,7 +123,6 @@ export class SimpleRAGManager {
   async deleteDocument(filename) {
     try {
       this.documents.delete(filename);
-      await fs.unlink(path.join(this.uploadsDir, filename));
       return true;
     } catch (error) {
       console.error('Error deleting document:', error);

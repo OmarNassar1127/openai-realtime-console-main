@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
 import { promises as fs } from 'fs';
@@ -13,6 +14,14 @@ const __dirname = dirname(__filename);
 const createRouter = (apiKey) => {
   const router = express.Router();
 
+  // Enable CORS for all routes
+  router.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    next();
+  });
+
   // Ensure uploads directory exists
   const uploadsDir = path.join(__dirname, '../uploads');
   fs.mkdir(uploadsDir, { recursive: true }).catch(console.error);
@@ -22,11 +31,11 @@ const createRouter = (apiKey) => {
     storage: multer.memoryStorage(),
     fileFilter: (req, file, cb) => {
       // For now, only allow text files to simplify testing
-      const allowedTypes = ['text/plain'];
+      const allowedTypes = ['text/plain', 'application/pdf'];
       if (allowedTypes.includes(file.mimetype)) {
         cb(null, true);
       } else {
-        cb(new Error('Invalid file type. Only TXT files are allowed.'));
+        cb(new Error('Invalid file type. Only TXT and PDF files are allowed.'));
       }
     },
     limits: {
@@ -48,45 +57,48 @@ const createRouter = (apiKey) => {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-    if (!ragManager) {
-      throw new Error('RAGManager not initialized');
+      if (!ragManager) {
+        throw new Error('RAGManager not initialized');
+      }
+
+      await ragManager.processDocument({
+        buffer: req.file.buffer,
+        filename: req.file.originalname, // Use originalname instead of filename
+        mimetype: req.file.mimetype,
+      });
+
+      res.json({
+        message: 'File uploaded and processed successfully',
+        file: {
+          id: req.file.originalname,
+          name: req.file.originalname,
+          size: req.file.size,
+          type: req.file.mimetype,
+        },
+      });
+    } catch (error) {
+      console.error('Error processing file:', error);
+      res.status(500).json({ error: error.message || 'Error processing file' });
     }
+  });
 
-    await ragManager.processDocument({
-      buffer: req.file.buffer,
-      filename: req.file.filename,
-      mimetype: req.file.mimetype,
-      path: req.file.path
-    });
-    res.json({
-      message: 'File uploaded and processed successfully',
-      file: {
-        id: req.file.filename,
-        name: req.file.originalname,
-        size: req.file.size,
-        type: req.file.mimetype,
-      },
-    });
-  } catch (error) {
-    console.error('Error processing file:', error);
-    res.status(500).json({ error: 'Error processing file' });
-  }
-});
+  router.delete('/files/:filename', async (req, res) => {
+    try {
+      if (!ragManager) {
+        throw new Error('RAGManager not initialized');
+      }
 
-router.delete('/files/:fileId', async (req, res) => {
-  try {
-    if (!ragManager) {
-      throw new Error('RAGManager not initialized');
+      const filename = req.params.filename;
+      await ragManager.deleteDocument(filename);
+
+      res.json({ message: 'File deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      res.status(500).json({ error: error.message || 'Error deleting file' });
     }
+  });
 
-    const fileId = req.params.fileId;
-    await ragManager.deleteDocument(fileId);
+  return router;
+};
 
-    res.json({ message: 'File deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting file:', error);
-    res.status(500).json({ error: 'Error deleting file' });
-  }
-});
-
-export default createRouter;
+export { createRouter };

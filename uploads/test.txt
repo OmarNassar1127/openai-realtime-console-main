@@ -1,0 +1,1 @@
+This is a simple test about AI. It helps verify our RAG system works.
