@@ -1,0 +1,14 @@
+M	package-lock.json
+M	package.json
+D	relay-server/index.js
+A	relay-server/index.mjs
+A	relay-server/lib/rag/simple_manager.mjs
+D	relay-server/lib/relay.js
+A	relay-server/lib/relay.mjs
+A	relay-server/routes/files.mjs
+A	relay-server/uploads/.gitkeep
+A	src/components/FileManagement/FileManagement.scss
+A	src/components/FileManagement/FileManagement.tsx
+A	src/components/FileManagement/index.ts
+M	src/pages/ConsolePage.tsx
+A	src/types/FileItem.ts

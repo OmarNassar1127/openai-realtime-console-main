@@ -1,0 +1,4 @@
+The capital of France is Paris.
+The Eiffel Tower is 324 meters tall.
+The Louvre Museum houses the Mona Lisa painting.
+These facts about Paris should be easily verifiable in the AI's responses.

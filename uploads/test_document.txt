@@ -1,0 +1,7 @@
+This is a test document about artificial intelligence and knowledge management.
+      Text splitting is an important part of processing documents for RAG systems.
+      When splitting text, we want to maintain context and readability.
+      The chunks should break at natural boundaries like periods.
+      This helps ensure that the retrieved context makes sense.
+      Artificial intelligence systems can use these text chunks to provide relevant information.
+      The RAG system combines retrieval and generation for better responses.
